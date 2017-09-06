@@ -20,10 +20,12 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
+import optparse
 import os
 import stat
 
 from ansible.cli import CLI
+from ansible.cli.galaxy import GalaxyCLI
 from ansible.errors import AnsibleError, AnsibleOptionsError
 from ansible.executor.playbook_executor import PlaybookExecutor
 from ansible.playbook.block import Block
@@ -68,6 +70,19 @@ class PlaybookCLI(CLI):
         parser.add_option('--start-at-task', dest='start_at_task',
                           help="start the playbook at the task matching this name")
 
+        # Add options for when we use a role file
+        
+        roles_group = optparse.OptionGroup(parser, "Roles File Options", "control how to download roles using a role-file")
+        # TODO: Find a better way so code is not duplicated between galaxy.py and playbook.py
+        roles_group.add_option('--ignore-errors', dest='ignore_errors', action='store_true', default=False, help='Ignore errors and continue with the next specified role.')
+        roles_group.add_option('-n', '--no-deps', dest='no_deps', action='store_true', default=False, help='Don\'t download roles listed as dependencies')
+        roles_group.add_option('-r', '--role-file', dest='role_file', help='A file containing a list of roles to be imported')
+        roles_group.add_option('-p', '--roles-path', dest='roles_path',
+                                   help='The path to the directory containing your roles. The default is the roles_path configured in your ansible.cfg'
+                                        'file (/etc/ansible/roles if not configured)', type='str')
+        roles_group.add_option('--force', dest='force', action='store_true', default=False, help='Force overwriting an existing role')
+        parser.add_option_group(roles_group)
+
         self.parser = parser
         super(PlaybookCLI, self).parse()
 
@@ -86,6 +101,26 @@ class PlaybookCLI(CLI):
         sshpass = None
         becomepass = None
         passwords = {}
+
+        if self.options.role_file:
+            args = ["install"]
+            if self.options.ignore_errors:
+               args.append( "--ignore-errors" )
+
+            force = ""
+            if self.options.force:
+               args.append( "--force" )
+
+            if self.options.roles_path:
+               args.extend(["--roles-path", self.options.roles_path])
+
+            if self.options.no_deps:
+               args.append( "--no-deps" )
+
+            args.extend(["--role-file", self.options.role_file])
+            gc = GalaxyCLI(args=args)
+            gc.parse()
+            gc.run()
 
         # initial error check, to make sure all specified playbooks are accessible
         # before we start running anything through the playbook executor
